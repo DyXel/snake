@@ -1,336 +1,128 @@
 /*
- * snake.c - The classic snake game written in ANSI C
- * by Dylam De La Torre <dyxel04@gmail.com>
- * Compile with: `cc snake.c -std=c89 -Wall -Wextra -Wpedantic -Werror -o snake`
- * Link with: `-lSDL2 -pthread` (taken from `pkg-config --libs --cflags sdl2`)
+ * Copyright (c) 2022, Dylam De La Torre <dyxel04@gmail.com>
+ *
+ * SPDX-License-Identifier: Zlib
  */
-#include <stdio.h>
+#include "snake.h"
+
+#include <limits.h>
 #include <stdlib.h>
-#include <time.h>
-#ifdef __EMSCRIPTEN__
-/* NOTE: Remember to compile with `-s USE_SDL=2` if using emscripten. */
-#include <emscripten.h>
-#include <SDL2/SDL.h>
-#define SDL_REN_FLAGS (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC)
-#else
-#include <SDL.h>
-#define SDL_REN_FLAGS (SDL_RENDERER_ACCELERATED)
-#endif /* __EMSCRIPTEN__ */
+#include <string.h>
 
-#define SNAKE_GAME_WIDTH 18
-#define SNAKE_GAME_HEIGHT 18
-#define SNAKE_STEP_RATE_IN_MILLISECONDS 125
-#define SNAKE_BLOCK_SIZE_IN_PIXELS 24
-#define SNAKE_MATRIX_SIZE (SNAKE_GAME_WIDTH * SNAKE_GAME_HEIGHT)
-#define SDL_TOTAL_WINDOW_WIDTH (SNAKE_BLOCK_SIZE_IN_PIXELS * SNAKE_GAME_WIDTH)
-#define SDL_TOTAL_WINDOW_HEIGHT (SNAKE_BLOCK_SIZE_IN_PIXELS * SNAKE_GAME_HEIGHT)
-/* Used to ease access to snake's body. */
-#define X_ 0
-#define Y_ 1
+#define THREE_BITS 0x7U /* ~CHAR_MAX >> (CHAR_BIT - SNAKE_CELL_MAX_BITS) */
+#define SHIFT(x, y) (((x) + ((y) * SNAKE_GAME_WIDTH)) * SNAKE_CELL_MAX_BITS)
 
-struct SnakeContext
+static void put_cell_at_(SnakeContext* ctx, char x, char y, SnakeCell ct)
 {
-	struct Body
-	{
-		int length; /* Length of the snake. */
-		enum Direction /* All snake's possible directions. */
-		{
-			SNAKE_DIR_RIGHT,
-			SNAKE_DIR_UP,
-			SNAKE_DIR_LEFT,
-			SNAKE_DIR_DOWN
-		}prev_dir, dir;
-		/* Position of each block of the snake. */
-		int pos[SNAKE_MATRIX_SIZE][2U];
-	}body;
-
-	struct Food
-	{
-		int x;
-		int y;
-	}food;
-};
-
-static void snake_context_new_food_pos(struct SnakeContext* ctx);
-static void snake_context_initialize(struct SnakeContext* ctx);
-static void snake_context_step(struct SnakeContext* ctx);
-static void snake_contex_redir(struct SnakeContext* ctx, enum Direction dir);
-
-struct MainLoopPayload
-{
-	SDL_Renderer* renderer;
-	struct SnakeContext snake_ctx;
-};
-
-static Uint32 sdl_timer_callback(Uint32 interval, void* payload);
-static int sdl_main_loop(struct MainLoopPayload* payload);
-#ifdef __EMSCRIPTEN__
-static void emscripten_main_loop(void* payload);
-#endif /* __EMSCRIPTEN__ */
-
-int main(int argc, char* argv[])
-{
-	int exit_value;
-	SDL_Window* window;
-	struct MainLoopPayload loop_payload;
-	SDL_TimerID step_timer;
-	(void)argc;
-	(void)argv;
-	exit_value = 0;
-	window = NULL;
-	loop_payload.renderer = NULL;
-	step_timer = 0;
-	srand(time(NULL));
-	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
-	{
-		exit_value = 1;
-		goto quit;
-	}
-	window = SDL_CreateWindow(
-		"Snake",
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_TOTAL_WINDOW_WIDTH,
-		SDL_TOTAL_WINDOW_HEIGHT,
-		SDL_WINDOW_SHOWN);
-	if(window == NULL)
-	{
-		exit_value = 2;
-		goto quit;
-	}
-	loop_payload.renderer = SDL_CreateRenderer(
-		window,
-		-1,
-		SDL_REN_FLAGS);
-	if(loop_payload.renderer == NULL)
-	{
-		exit_value = 3;
-		goto quit;
-	}
-	snake_context_initialize(&loop_payload.snake_ctx);
-	step_timer = SDL_AddTimer(
-		SNAKE_STEP_RATE_IN_MILLISECONDS,
-		sdl_timer_callback,
-		NULL);
-	if(step_timer == 0)
-	{
-		exit_value = 4;
-		goto quit;
-	}
-#ifdef __EMSCRIPTEN__
-	emscripten_set_main_loop_arg(emscripten_main_loop, &loop_payload, -1, 1);
-#else
-	while(sdl_main_loop(&loop_payload)) {}
-#endif /* __EMSCRIPTEN__ */
-quit:
-	if(exit_value > 0)
-		fprintf(stderr, "%s", SDL_GetError());
-	SDL_RemoveTimer(step_timer);
-	SDL_DestroyRenderer(loop_payload.renderer);
-	SDL_DestroyWindow(window);
-	SDL_Quit();
-	return exit_value;
+	const int shift = SHIFT(x, y);
+	const int adjust = shift % CHAR_BIT;
+	unsigned char* const pos = ctx->cells + (shift / CHAR_BIT);
+	unsigned short range;
+	memcpy(&range, pos, sizeof(range));
+	range &= ~(THREE_BITS << adjust); /* clear bits */
+	range |= (ct & THREE_BITS) << adjust;
+	memcpy(pos, &range, sizeof(range));
 }
 
-static int snake_context_is_food_inside_snake(struct SnakeContext* ctx)
+static void new_food_pos_(SnakeContext* ctx)
 {
-	int i;
-	for(i = 0; i < ctx->body.length; i++)
-	{
-		if(ctx->food.x == ctx->body.pos[i][X_] &&
-		   ctx->food.y == ctx->body.pos[i][Y_])
-			return 1;
-	}
-	return 0;
-}
-
-void snake_context_new_food_pos(struct SnakeContext* ctx)
-{
+	char x;
+	char y;
 	for(;;)
 	{
-		ctx->food.x = rand() % SNAKE_GAME_WIDTH;
-		ctx->food.y = rand() % SNAKE_GAME_HEIGHT;
-		if(snake_context_is_food_inside_snake(ctx) == 0)
-			return;
-	}
-}
-
-void snake_context_initialize(struct SnakeContext* ctx)
-{
-	int i;
-	ctx->body.dir = ctx->body.prev_dir = SNAKE_DIR_RIGHT;
-	ctx->body.length = 3;
-	for(i = 0; i < SNAKE_MATRIX_SIZE; i++)
-	{
-		ctx->body.pos[i][X_] = 8;
-		ctx->body.pos[i][Y_] = 8;
-	}
-	snake_context_new_food_pos(ctx);
-}
-
-void snake_context_step(struct SnakeContext* ctx)
-{
-	int i;
-	/* Update the snake's body. */
-	for(i = ctx->body.length; i > 0; i--)
-	{
-		ctx->body.pos[i][X_] = ctx->body.pos[i - 1][X_];
-		ctx->body.pos[i][Y_] = ctx->body.pos[i - 1][Y_];
-	}
-	/* Move snake's head based on direction. */
-	switch(ctx->body.dir)
-	{
-	case SNAKE_DIR_RIGHT:
-		ctx->body.pos[0][X_]++;
-	break;
-	case SNAKE_DIR_UP:
-		ctx->body.pos[0][Y_]--;
-	break;
-	case SNAKE_DIR_LEFT:
-		ctx->body.pos[0][X_]--;
-	break;
-	case SNAKE_DIR_DOWN:
-		ctx->body.pos[0][Y_]++;
-	break;
-	}
-	ctx->body.prev_dir = ctx->body.dir;
-	/* Warp to the other side of the screen if necessary. */
-	if(ctx->body.pos[0][X_] == SNAKE_GAME_WIDTH)
-		ctx->body.pos[0][X_] = 0;
-	else if(ctx->body.pos[0][X_] == -1)
-		ctx->body.pos[0][X_] = SNAKE_GAME_WIDTH - 1;
-	else if(ctx->body.pos[0][Y_] == SNAKE_GAME_HEIGHT)
-		ctx->body.pos[0][Y_] = 0;
-	else if(ctx->body.pos[0][Y_] == -1)
-		ctx->body.pos[0][Y_] = SNAKE_GAME_HEIGHT - 1;
-	/* Check snake's head collision with food... */
-	if(ctx->food.x == ctx->body.pos[0][X_] &&
-	   ctx->food.y == ctx->body.pos[0][Y_])
-	{
-		snake_context_new_food_pos(ctx);
-		ctx->body.length++;
-	}
-	/* Check snake's collision with itself... */
-	for(i = 1; i < ctx->body.length; i++)
-	{
-		if(ctx->body.pos[0][X_] == ctx->body.pos[i][X_] &&
-		   ctx->body.pos[0][Y_] == ctx->body.pos[i][Y_])
+		x = rand() % SNAKE_GAME_WIDTH;
+		y = rand() % SNAKE_GAME_HEIGHT;
+		if(snake_cell_at(ctx, x, y) == SNAKE_CELL_NOTHING)
 		{
-			snake_context_initialize(ctx);
-			return;
-		}
-	}
-}
-
-void snake_contex_redir(struct SnakeContext* ctx, enum Direction dir)
-{
-	if(dir == SNAKE_DIR_RIGHT && ctx->body.prev_dir != SNAKE_DIR_LEFT)
-		ctx->body.dir = SNAKE_DIR_RIGHT;
-	else if(dir == SNAKE_DIR_UP && ctx->body.prev_dir != SNAKE_DIR_DOWN)
-		ctx->body.dir = SNAKE_DIR_UP;
-	else if(dir == SNAKE_DIR_LEFT && ctx->body.prev_dir != SNAKE_DIR_RIGHT)
-		ctx->body.dir = SNAKE_DIR_LEFT;
-	else if(dir == SNAKE_DIR_DOWN && ctx->body.prev_dir != SNAKE_DIR_UP)
-		ctx->body.dir = SNAKE_DIR_DOWN;
-}
-
-Uint32 sdl_timer_callback(Uint32 interval, void* payload)
-{
-	SDL_Event e;
-	SDL_UserEvent ue;
-	/* NOTE: snake_context_step is not directly called here for
-	 * multithreaded concerns.
-	 */
-	(void)payload;
-	ue.type = SDL_USEREVENT;
-	ue.code = 0;
-	ue.data1 = NULL;
-	ue.data2 = NULL;
-	e.type = SDL_USEREVENT;
-	e.user = ue;
-	SDL_PushEvent(&e);
-	return interval;
-}
-
-int sdl_main_loop(struct MainLoopPayload* payload)
-{
-	SDL_Event e;
-	SDL_Rect r;
-	int i;
-	while(SDL_PollEvent(&e))
-	{
-		switch(e.type)
-		{
-		case SDL_QUIT:
-#ifdef __EMSCRIPTEN__
-			emscripten_cancel_main_loop();
-#endif /* __EMSCRIPTEN__ */
-			return 0;
-		case SDL_USEREVENT:
-			/* Its our timer, time to update! */
-			snake_context_step(&payload->snake_ctx);
-			break;
-		case SDL_KEYDOWN:
-			switch(e.key.keysym.scancode)
-			{
-			case SDL_SCANCODE_ESCAPE:
-#ifdef __EMSCRIPTEN__
-				emscripten_cancel_main_loop();
-#endif /* __EMSCRIPTEN__ */
-				return 0;
-			/* Restart the game as if the program was launched. */
-			case SDL_SCANCODE_R:
-				snake_context_initialize(&payload->snake_ctx);
-				break;
-			/* Decide new direction of the snake. */
-			case SDL_SCANCODE_RIGHT:
-				snake_contex_redir(&payload->snake_ctx, SNAKE_DIR_RIGHT);
-				break;
-			case SDL_SCANCODE_UP:
-				snake_contex_redir(&payload->snake_ctx, SNAKE_DIR_UP);
-				break;
-			case SDL_SCANCODE_LEFT:
-				snake_contex_redir(&payload->snake_ctx, SNAKE_DIR_LEFT);
-				break;
-			case SDL_SCANCODE_DOWN:
-				snake_contex_redir(&payload->snake_ctx, SNAKE_DIR_DOWN);
-				break;
-			default:
-				break;
-			}
+			put_cell_at_(ctx, x, y, SNAKE_CELL_FOOD);
 			break;
 		}
 	}
-	/* Start drawing scene. */
-	r.w = r.h = SNAKE_BLOCK_SIZE_IN_PIXELS;
-	SDL_SetRenderDrawColor(payload->renderer, 0, 0, 0, 255);
-	SDL_RenderClear(payload->renderer);
-	/* Draw food. */
-	r.x = payload->snake_ctx.food.x * SNAKE_BLOCK_SIZE_IN_PIXELS;
-	r.y = payload->snake_ctx.food.y * SNAKE_BLOCK_SIZE_IN_PIXELS;
-	SDL_SetRenderDrawColor(payload->renderer, 0, 0, 128, 255);
-	SDL_RenderFillRect(payload->renderer, &r);
-	/* Draw snake's head. */
-	r.x = payload->snake_ctx.body.pos[0][X_] * SNAKE_BLOCK_SIZE_IN_PIXELS;
-	r.y = payload->snake_ctx.body.pos[0][Y_] * SNAKE_BLOCK_SIZE_IN_PIXELS;
-	SDL_SetRenderDrawColor(payload->renderer, 255, 255, 0, 255);
-	SDL_RenderFillRect(payload->renderer, &r);
-	/* Draw snake's body. */
-	SDL_SetRenderDrawColor(payload->renderer, 0, 128, 0, 255);
-	for(i = 1; i < payload->snake_ctx.body.length; i++)
-	{
-		r.x = payload->snake_ctx.body.pos[i][X_] * SNAKE_BLOCK_SIZE_IN_PIXELS;
-		r.y = payload->snake_ctx.body.pos[i][Y_] * SNAKE_BLOCK_SIZE_IN_PIXELS;
-		SDL_RenderFillRect(payload->renderer, &r);
-	}
-	/* Present everything. */
-	SDL_RenderPresent(payload->renderer);
-	return 1;
 }
 
-#ifdef __EMSCRIPTEN__
-void emscripten_main_loop(void* payload)
+void snake_initialize(SnakeContext* ctx)
 {
-	sdl_main_loop((struct MainLoopPayload*)payload);
+	memset(ctx, 0, sizeof ctx->cells);
+	ctx->head_xpos = ctx->tail_xpos = SNAKE_GAME_WIDTH / 2;
+	ctx->head_ypos = ctx->tail_ypos = SNAKE_GAME_HEIGHT / 2;
+	ctx->next_dir = SNAKE_DIR_RIGHT;
+	ctx->inhibit_tail_step = 4;
+	put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, ctx->next_dir + 1);
+	new_food_pos_(ctx);
 }
-#endif /* __EMSCRIPTEN__ */
+
+void snake_redir(SnakeContext* ctx, SnakeDirection dir)
+{
+	SnakeCell ct = snake_cell_at(ctx, ctx->head_xpos, ctx->head_ypos);
+	if((dir == SNAKE_DIR_RIGHT && ct != SNAKE_CELL_SLEFT)  ||
+	   (dir == SNAKE_DIR_UP    && ct != SNAKE_CELL_SDOWN)  ||
+	   (dir == SNAKE_DIR_LEFT  && ct != SNAKE_CELL_SRIGHT) ||
+	   (dir == SNAKE_DIR_DOWN  && ct != SNAKE_CELL_SUP))
+		ctx->next_dir = dir;
+}
+
+static void wrap_around_(char* val, char max)
+{
+	if(*val < 0)
+		*val = max - 1;
+	if(*val > max - 1)
+		*val = 0;
+}
+
+void snake_step(SnakeContext* ctx)
+{
+	SnakeCell ct;
+	char prev_xpos;
+	char prev_ypos;
+	/* Move tail forward */
+	if(--ctx->inhibit_tail_step == 0)
+	{
+		++ctx->inhibit_tail_step;
+		ct = snake_cell_at(ctx, ctx->tail_xpos, ctx->tail_ypos);
+		put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, SNAKE_CELL_NOTHING);
+		switch(ct)
+		{
+		case SNAKE_CELL_SRIGHT: ctx->tail_xpos++; break;
+		case SNAKE_CELL_SUP: ctx->tail_ypos--; break;
+		case SNAKE_CELL_SLEFT: ctx->tail_xpos--; break;
+		case SNAKE_CELL_SDOWN: ctx->tail_ypos++; break;
+		default: break;
+		}
+		wrap_around_(&ctx->tail_xpos, SNAKE_GAME_WIDTH);
+		wrap_around_(&ctx->tail_ypos, SNAKE_GAME_HEIGHT);
+	}
+	/* Move head forward */
+	prev_xpos = ctx->head_xpos;
+	prev_ypos = ctx->head_ypos;
+	switch(ctx->next_dir)
+	{
+	case SNAKE_DIR_RIGHT: ++ctx->head_xpos; break;
+	case SNAKE_DIR_UP: --ctx->head_ypos; break;
+	case SNAKE_DIR_LEFT: --ctx->head_xpos; break;
+	case SNAKE_DIR_DOWN: ++ctx->head_ypos; break;
+	}
+	wrap_around_(&ctx->head_xpos, SNAKE_GAME_WIDTH);
+	wrap_around_(&ctx->head_ypos, SNAKE_GAME_HEIGHT);
+	/* Collisions */
+	ct = snake_cell_at(ctx, ctx->head_xpos, ctx->head_ypos);
+	if(ct != SNAKE_CELL_NOTHING && ct != SNAKE_CELL_FOOD)
+	{
+		snake_initialize(ctx);
+		return;
+	}
+	put_cell_at_(ctx, prev_xpos, prev_ypos, ctx->next_dir + 1);
+	put_cell_at_(ctx, ctx->head_xpos, ctx->head_ypos, ctx->next_dir + 1);
+	if(ct == SNAKE_CELL_FOOD)
+	{
+		new_food_pos_(ctx);
+		++ctx->inhibit_tail_step;
+	}
+}
+
+SnakeCell snake_cell_at(SnakeContext* ctx, char x, char y)
+{
+	const int shift = SHIFT(x, y);
+	unsigned short range;
+	memcpy(&range, ctx->cells + (shift / CHAR_BIT), sizeof(range));
+	return (range >> (shift % CHAR_BIT)) & THREE_BITS;
+}

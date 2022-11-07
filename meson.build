@@ -4,6 +4,6 @@ project('snake', 'c',
 )
 
 executable('snake', ['src/main.c', 'src/snake.c'],
-	c_args : ['-ansi'],
+	c_args : ['-ansi', '-Wc++-compat'],
 	dependencies : dependency('sdl2')
 )

@@ -47,7 +47,7 @@ void snake_initialize(SnakeContext* ctx)
 	ctx->head_ypos = ctx->tail_ypos = SNAKE_GAME_HEIGHT / 2;
 	ctx->next_dir = SNAKE_DIR_RIGHT;
 	ctx->inhibit_tail_step = 4;
-	put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, ctx->next_dir + 1);
+	put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, SNAKE_CELL_SRIGHT);
 	new_food_pos_(ctx);
 }
 
@@ -71,6 +71,7 @@ static void wrap_around_(char* val, char max)
 
 void snake_step(SnakeContext* ctx)
 {
+	const SnakeCell dir_as_cell = (SnakeCell)(ctx->next_dir + 1);
 	SnakeCell ct;
 	char prev_xpos;
 	char prev_ypos;
@@ -110,8 +111,8 @@ void snake_step(SnakeContext* ctx)
 		snake_initialize(ctx);
 		return;
 	}
-	put_cell_at_(ctx, prev_xpos, prev_ypos, ctx->next_dir + 1);
-	put_cell_at_(ctx, ctx->head_xpos, ctx->head_ypos, ctx->next_dir + 1);
+	put_cell_at_(ctx, prev_xpos, prev_ypos, dir_as_cell);
+	put_cell_at_(ctx, ctx->head_xpos, ctx->head_ypos, dir_as_cell);
 	if(ct == SNAKE_CELL_FOOD)
 	{
 		new_food_pos_(ctx);
@@ -124,5 +125,5 @@ SnakeCell snake_cell_at(SnakeContext* ctx, char x, char y)
 	const int shift = SHIFT(x, y);
 	unsigned short range;
 	memcpy(&range, ctx->cells + (shift / CHAR_BIT), sizeof(range));
-	return (range >> (shift % CHAR_BIT)) & THREE_BITS;
+	return (SnakeCell)((range >> (shift % CHAR_BIT)) & THREE_BITS);
 }

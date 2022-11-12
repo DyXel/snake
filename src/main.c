@@ -10,10 +10,8 @@
 /* NOTE: Remember to compile with `-s USE_SDL=2` if using emscripten. */
 #include <emscripten.h>
 #include <SDL2/SDL.h>
-#define SDL_REN_FLAGS (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC)
 #else
 #include <SDL.h>
-#define SDL_REN_FLAGS (SDL_RENDERER_ACCELERATED)
 #endif /* __EMSCRIPTEN__ */
 
 #include "snake.h"
@@ -70,25 +68,6 @@ static int handle_key_event_(SnakeContext* ctx, SDL_Scancode key_code)
 	return 1;
 }
 
-static int event_loop_(SnakeContext* ctx)
-{
-	SDL_Event e;
-	while(SDL_PollEvent(&e))
-	{
-		switch(e.type)
-		{
-		case SDL_QUIT:
-#ifdef __EMSCRIPTEN__
-			emscripten_cancel_main_loop();
-#endif /* __EMSCRIPTEN__ */
-			return 0;
-		case SDL_USEREVENT: snake_step(ctx); break;
-		case SDL_KEYDOWN: return handle_key_event_(ctx, e.key.keysym.scancode);
-		}
-	}
-	return 1;
-}
-
 static void set_rect_xy_(SDL_Rect* r, short x, short y)
 {
 	r->x = x * SNAKE_BLOCK_SIZE_IN_PIXELS;
@@ -127,8 +106,24 @@ static void draw_scene_(SDL_Renderer* renderer, SnakeContext* ctx)
 
 static int main_loop_(MainLoopPayload* payload)
 {
-	if(event_loop_(&payload->snake_ctx) == 0) return 0;
-	draw_scene_(payload->renderer, &payload->snake_ctx);
+	SDL_Event e;
+	SnakeContext* ctx = &payload->snake_ctx;
+	while(SDL_PollEvent(&e))
+	{
+		switch(e.type)
+		{
+		case SDL_QUIT:
+#ifdef __EMSCRIPTEN__
+			emscripten_cancel_main_loop();
+#endif /* __EMSCRIPTEN__ */
+			return 0;
+		case SDL_USEREVENT:
+			snake_step(ctx);
+			draw_scene_(payload->renderer, ctx);
+			break;
+		case SDL_KEYDOWN: return handle_key_event_(ctx, e.key.keysym.scancode);
+		}
+	}
 	return 1;
 }
 
@@ -172,7 +167,7 @@ int main(int argc, char* argv[])
 	loop_payload.renderer = SDL_CreateRenderer(
 		window,
 		-1,
-		SDL_REN_FLAGS);
+		SDL_RENDERER_ACCELERATED);
 	if(loop_payload.renderer == NULL)
 	{
 		exit_value = 3;

@@ -108,7 +108,7 @@ static int main_loop_(MainLoopPayload* payload)
 {
 	SDL_Event e;
 	SnakeContext* ctx = &payload->snake_ctx;
-	while(SDL_PollEvent(&e))
+	while(SDL_WaitEvent(&e))
 	{
 		switch(e.type)
 		{
@@ -152,6 +152,7 @@ int main(int argc, char* argv[])
 		exit_value = 1;
 		goto quit;
 	}
+	SDL_SetHint("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0");
 	window = SDL_CreateWindow(
 		"Snake",
 		SDL_WINDOWPOS_UNDEFINED,

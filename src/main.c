@@ -10,8 +10,10 @@
 /* NOTE: Remember to compile with `-s USE_SDL=2` if using emscripten. */
 #include <emscripten.h>
 #include <SDL2/SDL.h>
+#define SDL_EVENT_POLLING_FUNCTION(e) SDL_PollEvent((e))
 #else
 #include <SDL.h>
+#define SDL_EVENT_POLLING_FUNCTION(e) SDL_WaitEvent((e))
 #endif /* __EMSCRIPTEN__ */
 
 #include "snake.h"
@@ -108,7 +110,7 @@ static int main_loop_(MainLoopPayload* payload)
 {
 	SDL_Event e;
 	SnakeContext* ctx = &payload->snake_ctx;
-	while(SDL_WaitEvent(&e))
+	while(SDL_EVENT_POLLING_FUNCTION(&e))
 	{
 		switch(e.type)
 		{

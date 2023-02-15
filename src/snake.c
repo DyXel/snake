@@ -42,13 +42,15 @@ static void new_food_pos_(SnakeContext* ctx)
 
 void snake_initialize(SnakeContext* ctx)
 {
+	int i;
 	memset(ctx, 0, sizeof ctx->cells);
 	ctx->head_xpos = ctx->tail_xpos = SNAKE_GAME_WIDTH / 2;
 	ctx->head_ypos = ctx->tail_ypos = SNAKE_GAME_HEIGHT / 2;
 	ctx->next_dir = SNAKE_DIR_RIGHT;
 	ctx->inhibit_tail_step = 4;
 	put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, SNAKE_CELL_SRIGHT);
-	new_food_pos_(ctx);
+	for(i = 0; i < 4; i++)
+		new_food_pos_(ctx);
 }
 
 void snake_redir(SnakeContext* ctx, SnakeDirection dir)
@@ -120,7 +122,7 @@ void snake_step(SnakeContext* ctx)
 	}
 }
 
-SnakeCell snake_cell_at(SnakeContext* ctx, char x, char y)
+SnakeCell snake_cell_at(const SnakeContext* ctx, char x, char y)
 {
 	const int shift = SHIFT(x, y);
 	unsigned short range;

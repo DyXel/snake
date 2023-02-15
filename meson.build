@@ -1,6 +1,7 @@
 project('snake', 'c',
 	license : 'Zlib',
-	default_options : ['c_std=c89', 'warning_level=3', 'werror=true']
+	default_options : ['c_std=c89', 'warning_level=3', 'werror=true'],
+	version : '1.0.0',
 )
 
 if meson.get_compiler('c').get_id() == 'emscripten'

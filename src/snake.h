@@ -43,6 +43,6 @@ typedef struct
 void snake_initialize(SnakeContext* ctx);
 void snake_redir(SnakeContext* ctx, SnakeDirection dir);
 void snake_step(SnakeContext* ctx);
-SnakeCell snake_cell_at(SnakeContext* ctx, char x, char y);
+SnakeCell snake_cell_at(const SnakeContext* ctx, char x, char y);
 
 #endif /* SNAKE_H */

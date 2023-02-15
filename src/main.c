@@ -89,10 +89,10 @@ static void draw_scene_(SDL_Renderer* renderer, SnakeContext* ctx)
 	{
 		for(j = 0; j < SNAKE_GAME_HEIGHT; j++)
 		{
-			set_rect_xy_(&r, i, j);
 			ct = snake_cell_at(ctx, i, j);
 			if(ct == SNAKE_CELL_NOTHING)
 				continue;
+			set_rect_xy_(&r, i, j);
 			if(ct == SNAKE_CELL_FOOD)
 				SDL_SetRenderDrawColor(renderer, 0, 0, 128, 255);
 			else /* body */
@@ -123,7 +123,8 @@ static int main_loop_(MainLoopPayload* payload)
 			snake_step(ctx);
 			draw_scene_(payload->renderer, ctx);
 			break;
-		case SDL_KEYDOWN: return handle_key_event_(ctx, e.key.keysym.scancode);
+		case SDL_KEYDOWN:
+			return handle_key_event_(ctx, e.key.keysym.scancode);
 		}
 	}
 	return 1;

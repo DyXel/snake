@@ -60,11 +60,12 @@ static int handle_key_event_(SnakeContext* ctx, SDL_Scancode key_code)
 		return 0;
 	/* Restart the game as if the program was launched. */
 	case SDL_SCANCODE_R: snake_initialize(ctx); break;
-	/* Decide new direction of the snake. */
+	/* Decide new direction of the snake.
 	case SDL_SCANCODE_RIGHT: snake_redir(ctx, SNAKE_DIR_RIGHT); break;
 	case SDL_SCANCODE_UP: snake_redir(ctx, SNAKE_DIR_UP); break;
 	case SDL_SCANCODE_LEFT: snake_redir(ctx, SNAKE_DIR_LEFT); break;
 	case SDL_SCANCODE_DOWN: snake_redir(ctx, SNAKE_DIR_DOWN); break;
+	*/
 	default: break;
 	}
 	return 1;
@@ -106,6 +107,29 @@ static void draw_scene_(SDL_Renderer* renderer, SnakeContext* ctx)
 	SDL_RenderPresent(renderer);
 }
 
+static void ai_decide_next_dir_(SnakeContext* ctx)
+{
+	if(ctx->head_ypos == SNAKE_GAME_HEIGHT / 2)
+	{
+		snake_redir(ctx, SNAKE_DIR_DOWN);
+		return;
+	}
+	if(ctx->head_ypos == 0)
+	{
+		if(ctx->next_dir == SNAKE_DIR_UP)
+			snake_redir(ctx, SNAKE_DIR_RIGHT);
+		else if(ctx->next_dir == SNAKE_DIR_RIGHT)
+			snake_redir(ctx, SNAKE_DIR_DOWN);
+	}
+	if(ctx->head_ypos == SNAKE_GAME_HEIGHT - 1)
+	{
+		if(ctx->next_dir == SNAKE_DIR_DOWN)
+			snake_redir(ctx, SNAKE_DIR_RIGHT);
+		else if(ctx->next_dir == SNAKE_DIR_RIGHT)
+			snake_redir(ctx, SNAKE_DIR_UP);
+	}
+}
+
 static int main_loop_(MainLoopPayload* payload)
 {
 	SDL_Event e;
@@ -120,6 +144,7 @@ static int main_loop_(MainLoopPayload* payload)
 #endif /* __EMSCRIPTEN__ */
 			return 0;
 		case SDL_USEREVENT:
+			ai_decide_next_dir_(ctx);
 			snake_step(ctx);
 			draw_scene_(payload->renderer, ctx);
 			break;

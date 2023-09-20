@@ -1,12 +1,12 @@
 /*
- * Copyright (c) 2022, Dylam De La Torre <dyxel04@gmail.com>
+ * Copyright (c) 2023, Dylam De La Torre <dyxel04@gmail.com>
  *
  * SPDX-License-Identifier: Zlib
  */
 #ifndef SNAKE_H
 #define SNAKE_H
 #define SNAKE_GAME_WIDTH 24U
-#define SNAKE_GAME_HEIGHT 19U
+#define SNAKE_GAME_HEIGHT 18U
 #define SNAKE_MATRIX_SIZE (SNAKE_GAME_WIDTH * SNAKE_GAME_HEIGHT)
 
 typedef enum
@@ -38,6 +38,7 @@ typedef struct
 	char tail_ypos;
 	char next_dir;
 	char inhibit_tail_step;
+	unsigned occupied_cells;
 }SnakeContext;
 
 void snake_initialize(SnakeContext* ctx);

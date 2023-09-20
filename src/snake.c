@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Dylam De La Torre <dyxel04@gmail.com>
+ * Copyright (c) 2023, Dylam De La Torre <dyxel04@gmail.com>
  *
  * SPDX-License-Identifier: Zlib
  */
@@ -22,6 +22,11 @@ static void put_cell_at_(SnakeContext* ctx, char x, char y, SnakeCell ct)
 	range &= ~(THREE_BITS << adjust); /* clear bits */
 	range |= (ct & THREE_BITS) << adjust;
 	memcpy(pos, &range, sizeof(range));
+}
+
+static int are_cells_full_(SnakeContext* ctx)
+{
+	return ctx->occupied_cells == SNAKE_GAME_WIDTH * SNAKE_GAME_HEIGHT;
 }
 
 static void new_food_pos_(SnakeContext* ctx)
@@ -47,10 +52,14 @@ void snake_initialize(SnakeContext* ctx)
 	ctx->head_xpos = ctx->tail_xpos = SNAKE_GAME_WIDTH / 2;
 	ctx->head_ypos = ctx->tail_ypos = SNAKE_GAME_HEIGHT / 2;
 	ctx->next_dir = SNAKE_DIR_RIGHT;
-	ctx->inhibit_tail_step = 4;
+	ctx->inhibit_tail_step = ctx->occupied_cells = 4;
+	--ctx->occupied_cells;
 	put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, SNAKE_CELL_SRIGHT);
 	for(i = 0; i < 4; i++)
+	{
 		new_food_pos_(ctx);
+		++ctx->occupied_cells;
+	}
 }
 
 void snake_redir(SnakeContext* ctx, SnakeDirection dir)
@@ -117,8 +126,14 @@ void snake_step(SnakeContext* ctx)
 	put_cell_at_(ctx, ctx->head_xpos, ctx->head_ypos, dir_as_cell);
 	if(ct == SNAKE_CELL_FOOD)
 	{
+		if(are_cells_full_(ctx))
+		{
+			snake_initialize(ctx);
+			return;
+		}
 		new_food_pos_(ctx);
 		++ctx->inhibit_tail_step;
+		++ctx->occupied_cells;
 	}
 }
 

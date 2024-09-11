@@ -1,4 +1,5 @@
 <p align="center">
+	<b>ARCHIVED</b>: Merged as part of SDL3 examples, you can see it at https://github.com/libsdl-org/SDL/tree/main/examples/game/01-snake and you can play at https://examples.libsdl.org/SDL3/game/01-snake/
 	<img src="./gameplay.png" alt="Snake gameplay"/>
 </p>
 
